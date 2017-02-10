@@ -1,0 +1,976 @@
+---
+title: "Udacity P4 Project"
+author: "A.Roghi - Airbus"
+date: "16 January 2017"
+output:
+  html_document: null
+  pdf_document: default
+  toc: yes
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = T)
+
+library(ggplot2)
+library(GGally)
+library(grid)
+library(gridExtra)
+library(dplyr)
+library(reshape2)
+
+
+setwd("D:/Udacity/Projects/P4/Project")
+wine <- read.csv("wineQualityWhites.csv", row.names = NULL)
+
+```
+
+# White wine quality analysis
+
+This document is composed of 5 sections.
+
+* Section 1: General information about dataset
+* Section 2: Variable analysis - analysis of each variable independantly 
+* Section 3: Data cleaning - describe and perform data cleaning
+* Section 4: Correlation analysis - provide a global view about correlation between variables
+* Section 5: Variable correlation analysis - provide an analysis of correlation between quality and all other variables
+* Section 6: Other explored relationships - provide an analysis for the most correlated variables
+* Section 7: Multivariate analysis - provide a multivariate analysis to better understand variable impact on quality 
+* Section 8: Final Plots and Summary
+* Section 9: Reflexion
+  
+## General information about dataset
+
+Please navigate using the tabs to see the different contents.
+
+#### {.tabset .tabset-fade .tabset-pills}
+
+##### Dataset content
+This tidy data set contains 4,898 white wines with 11 variables on quantifying the chemical properties of each wine. At least 3 wine experts rated the quality of each wine, providing a rating between 0 (very bad) and 10 (very excellent).
+
+The question we would like to answer is:
+* Which chemical properties influence the quality of white wines
+
+
+
+##### Dataset structure
+```{r dataset_structure, echo = F}
+# names(wine)
+# print("")
+# paste("Number of observations : ",nrow(wine))
+str(wine)
+```
+Our dataset consist of 13 variables. The X variables is only a row identifier and will not be considered in the rest of this analysis. It means we have 12 meaningfull variables.
+It is composed of around 4900 observations.
+
+##### Dataset sample rows
+```{r dataset_head, echo = F}
+# Remove the X column
+wine$X <- NULL
+head(wine,10)
+```
+
+##### Dataset descriptive statistics
+```{r descriptive_stat, echo = F}
+summary(wine)
+```
+####
+
+## Variable analysis
+```{r histogram_function, echo = F}
+
+NormalizeString <- function(variable) {
+  # This function normalize a string removing any point and setting in uppercase
+  # every first letters of each word
+  
+  title = gsub("\\.", " ", variable)
+  title = gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2", title, perl=T)
+  return(title)
+}
+
+CreateHistogram <- function(data,
+                            variable, 
+                            bins = 30, 
+                            show.quantile = 1,
+                            exclude.outlier = F,
+                            color = "orange",
+                            title = "",
+                            unit = "",
+                            discrete = F,
+                            norm.variable = T,
+                            show.density = F) {
+  
+  ' This function create an histogram for a given variable of a dataset
+    Input parameters:
+      data            : dataset containing data to be plotted
+      variable        : dataset variable to be displayed
+      bins            : number of bin of the histogram
+      show.quantile   : show the corresponding quantile limit
+                        if value is less than 1
+      exclude.outlier : exclude outliers using the interquantile method 
+                        if set to T
+      color           : provide the color of histogram
+      discrete        : tell if variable is discrete (T) 
+                        or continuous (F)
+      norm.variable   : tell if the variable name shall be normalized before 
+                        being displayed
+      show.density    : tell if chart shall display an density basd histogram (T) or a 
+                        count based histogram
+    Output:
+      The generated chart
+  '
+  string.tittle = NormalizeString(title)
+  string.tittle = paste(string.tittle, if (string.tittle != "") " - " else "")
+
+  data.new <- data
+  if (exclude.outlier) {
+    # Remove outliers and update title accordingly
+    string.tittle = paste(string.tittle,"Outlier exc.")
+    InterQuantile <- quantile(data.new[,variable],0.75) - 
+					           quantile(data.new[,variable],0.25)
+    UpperLimit <- quantile(data.new[,variable],0.75) + 1.5 * InterQuantile
+    data.new <- subset(data.new,data.new[,variable] <= UpperLimit)
+  } else {
+    string.tittle = paste(string.tittle,"All data")
+  }
+  
+  if (show.density) {
+    chart <- ggplot(data = data.new,aes(x = data.new[,variable],y = ..density..))
+  } else {
+    chart <- ggplot(data = data.new,aes(x = data.new[,variable],y = ..count..))
+  }
+  if(discrete) {
+    # use bar chart for discrete variable
+    chart <- chart + geom_bar(fill = color, color = "grey")
+  } else {
+    # otherwise use histogram
+    chart <- chart + geom_histogram(bins = bins,fill = color)
+  }
+  
+  #  Manage labels
+  variable.display = if (norm.variable) NormalizeString(variable) else variable
+  chart <- chart + xlab(label=paste(variable.display, 
+                        if (unit != "") paste(" (",unit,")") else "")) +
+    ylab(if (show.density) "Probability Density" else "Count") +
+    ggtitle(string.tittle) +
+    theme(plot.title = element_text(hjust = 0.5))
+
+  # Show quantile limit if needed
+  if (show.quantile != 1) {
+    chart <- chart + geom_vline(xintercept=quantile(data.new[,variable],
+                                                    show.quantile),
+								                colour = "red")
+  }
+  
+  return(chart)
+}
+
+ShowVariable <- function(variable, 
+                         bins = 30, 
+                         unit = "", 
+                         discrete = F,
+                         norm.variable = T) {
+  
+  # Show the two charts (as is and without outliers in a grid)
+  chart.asis      <- CreateHistogram(data=wine,
+                                     variable=variable,
+                                     show.quantile=0.95,
+                                     bins=bins,
+                                     unit=unit,
+                                     discrete=discrete,
+                                     norm.variable=norm.variable)
+  
+  chart.modified  <- CreateHistogram(data=wine,
+                                     variable=variable,
+                                     exclude.outlier=T,
+                                     color="blue",
+                                     bins=bins,
+                                     unit=unit,
+                                     discrete=discrete,
+                                     norm.variable=norm.variable)
+  
+  grid.arrange(chart.asis, chart.modified, ncol = 2)
+}
+```
+
+This section shows several distribution charts for each variable.
+Please use the tab to navigate from one analysis to the other.
+
+The orange chart is based on dataset information as they are.
+The red vertical line shows the 95% quantile threshold.
+The blue chart is based on dataset information without upper outliers. 
+Outliers are identified using the Inter Quartile method.
+The grey chart show when relevant the data set information without outliers 
+using a log10 scale.
+Associated descriptive statistics are provided (when relevant)
+
+
+#### {.tabset .tabset-fade .tabset-pills}
+
+##### Fixed acidity
+```{r fixed.acidity, echo = F}
+ShowVariable(variable = "fixed.acidity",
+             unit = "g / dm^3")
+
+summary(wine$fixed.acidity)
+```
+
+Fixed acidity distribution is rather a normal distribution with an average value at 6.855 g/dm^3. We see there are some outliers with values beyond 10 g/dm^3.
+
+
+
+##### Volatile acidity
+```{r volatile.acidity, echo = F}
+ShowVariable(variable = "volatile.acidity",
+             bins=40,
+             unit = "g / dm^3")
+
+summary(wine$volatile.acidity)
+```
+
+Volatile acidity distribution is a rather normal with an average value of 0.2782 g/dm^3. We see there are some outliers with values greater than 0.5 g/dm^3.
+
+##### Citric acid
+```{r citric.acid, echo = F}
+ShowVariable(variable = "citric.acid",
+             unit = "g / dm^3")
+
+summary(wine$citric.acid)
+
+```
+
+The citric acid distribution is rather normal with an average value of 0.3342 g/dm^3. We see there are some outliers with values above 0.6 g/dm^3.
+
+We see a pic just below 0.5 g/dm^3.
+Has it is just below 0.5, it could be interesting to understand how the associated measures were done and if we do not have a measurement system limit in that case.
+
+
+##### Residual sugar
+```{r residual.sugar, echo = F}
+ShowVariable(variable = "residual.sugar",
+             unit = "g / dm^3")
+
+# Show the chart using a log 10 transformation of the residual.sugar value
+chart <- CreateHistogram(data = wine,
+                         variable = "residual.sugar",
+                         exclude.outlier=T,
+                         color = "gray",
+                         bins = 100,
+                         title = "log 10",
+                         unit = "g / dm^3")
+
+chart + scale_x_continuous(trans = "log10")
+
+summary(wine$residual.sugar)
+```
+
+The desidual sugar distribution is skewed with an average value of 6.491 g/dm^3. There are some outliers with values above 22.5 g/dm^3.
+
+When looking to the log 10 transformed distribution, we see a at least bimodal distribution. When looking to above 5 g/dm^3 sugar values, we can also say we have multimodal distribution.
+
+It could be interesting to segregate information for wine having value less and above 5 g/dm^3 for residual sugar.
+
+##### Chlorides
+```{r chlorides, echo = F}
+ShowVariable(variable = "chlorides",
+             unit = "g / dm^3")
+
+summary(wine$chlorides)
+```
+
+Chlorides distribution is rather normal with an average value of 0.04577 g/dm^3. There are some outliers with values above 0.07 g/dm^3.
+
+##### Free sulfur dioxide
+```{r free.sulfur.dioxide, echo = F}
+ShowVariable(variable = "free.sulfur.dioxide",
+             bins=40,
+             unit = "mg / dm^3")
+
+summary(wine$free.sulfur.dioxide)
+```
+
+
+Free sulfur dioxide distribution is rather normal with an average value of 35.31 mg/dm^3. There are some outliers with values above 80 mg/dm^3.
+
+
+##### Total sulfur dioxide
+```{r total.sulfur.dioxide, echo = F}
+ShowVariable(variable = "total.sulfur.dioxide",
+             unit = "mg / dm^3")
+
+summary(wine$total.sulfur.dioxide)
+```
+
+Total sulfur dioxide distribution is rather normal with an average value of 134 mg/dm^3. There are some outliers with values above 160 mg/dm^3.
+
+
+##### Density
+```{r density, echo = F}
+ShowVariable(variable = "density",
+             bins=60,
+             unit = "g / cm^3")
+
+summary(wine$density)
+```
+
+Wine density distribution is rather normal with an average value of 0.9940 g/cm^3. There are some outliers with values above 1.0025 g/cm^3.
+
+##### pH
+```{r pH, echo = F}
+ShowVariable(variable = "pH",
+             bins = 40,
+             norm.variable = F)
+
+summary(wine$pH)
+```
+
+pH distribution is rather normal with an average value of 3.188. There are some outliers with values above 3.55.
+
+It means that Vinho Verder is a pretty acid wine. This is coherent with acidity of grape fruit juice (see https://en.wikipedia.org/wiki/PH#/media/File:216_pH_Scale-01.jpg).
+
+Reminder: pH lader goes from 0 to 14. Neutral pH is 7. Values below 7 mean acidity. Value above 7 mean basicity.
+
+
+##### Sulphates
+```{r sulphates, echo = F}
+ShowVariable(variable = "sulphates",
+             bins = 40,
+             unit = "g / dm^3")
+
+summary(wine$sulphates)
+```
+
+Sulfates distribution is rather normal with an average value of 0.4898 g/dm^3. There are some outliers with values above 0.76 g/dm^3.
+
+
+##### Alcohol
+```{r alcohol, echo = F}
+ShowVariable(variable = "alcohol",
+             bins = 60,
+             unit = "% / vol")
+
+# Show chart using a log10 transofrmation of the alcohol values
+chart <- CreateHistogram(data = wine,
+                         variable = "alcohol",
+                         exclude.outlier = T,
+                         color = "gray",
+                         bins = 28,
+                         title = "log 10",
+                         unit = "% / vol")
+
+chart + scale_x_continuous(trans = "log10")
+
+summary(wine$alcohol)
+```
+
+When looking to alcohol distribution, we can see a skewed distribution. Average alcohol level of 10.51 %/vol. This a pretty soft wine (in average wines have 12% to 14% alcohol level). There are no real outliers when using the interquantile methodolody. 
+
+The log 10 transformation does not materialise any multimodal distribution.
+
+
+
+##### Quality
+```{r quality, echo = F}
+CreateHistogram(data = wine,
+                variable = "quality",
+                discrete = T)
+
+```
+
+We can identify 3 different quality groups.
+The low one with score up to 4.
+The medium ones with score of 5, 6 or 7.
+The good ones with socres of 8 or 9.
+
+Most of the wines are considered having a medium quality.
+We can see we have very few wines considered as bad (quality = 3) and even
+ fewer rated very good (quality = 9).
+We have no "crappy" wines (quality = 0 or 1) nor outstanding wines (quality = 10).
+
+####
+
+
+## Data cleaning
+
+From the dataset, we will exclude all lines having at least one value considered as an outlier (based on the inter quantile method).
+
+
+```{r cleaning, echo = F}
+
+wine.cleaned <- wine
+
+ExcludeOutlier <- function(result.dataset,
+                           initial.dataset,
+                           variable){
+  
+  InterQuantile <- quantile(initial.dataset[,variable],0.75) -
+				   quantile(initial.dataset[,variable],0.25)
+  UpperLimit <- quantile(initial.dataset[,variable],0.75) + 1.5 * InterQuantile
+  output.dataset <- subset(result.dataset,
+                           result.dataset[,variable] <= UpperLimit)
+  return(output.dataset)
+}
+
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"fixed.acidity")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"volatile.acidity")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"citric.acid")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"residual.sugar")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"chlorides")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"free.sulfur.dioxide")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"total.sulfur.dioxide")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"density")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"pH")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"sulphates")
+wine.cleaned <- ExcludeOutlier(wine.cleaned,wine,"alcohol")
+
+print(paste("Initial number of rows:",nrow(wine)))
+print(paste("Number of rows in cleaned dataset:",nrow(wine.cleaned)))
+
+```
+
+
+## Correlation analysis
+
+Please navigate using the tabs to see the two different correlation plots.
+
+#### {.tabset .tabset-fade .tabset-pills}
+
+##### Correlation heatmap
+
+```{r correlation_heatmap, echo = F}
+
+# See http://www.sthda.com/french/wiki/ggplot2-heatmap-d-une-matrice-de-corr-lation-logiciel-r-et-visualisation-de-donn-es
+
+correlation.matrix <- round(cor(wine.cleaned),2)
+correlation.matrix.melted <- melt(correlation.matrix)
+
+ggplot(data = correlation.matrix.melted, aes(Var2, Var1, fill = value)) +
+ geom_tile(color = "white") +
+ scale_fill_gradient2(low = "blue", 
+                      high = "red", 
+                      mid = "white", 
+                      midpoint = 0,
+                      limit = c(-1,1), 
+                      space = "Lab",
+                      name = "Pearson\nCorrelation") +
+  theme_minimal()+ 
+  theme(axis.text.x = element_text(angle = 45,
+        vjust = 1, size = 12, hjust = 1)) +
+  coord_fixed()
+
+```
+
+Quality seems to be negatively correlated with density and positively 
+correlated with alcohol.
+But quality related correlation coefficient are pretty low (in absolute value)!
+
+##### Correlation matrix plot
+
+```{r correlation_matrix_plot, echo = F}
+
+# We remove the non interesting columns to improve matrix chart readeability
+#wine.cleaned$sulphates <- NULL
+#wine.cleaned$volatile.acidity <- NULL
+#wine.cleaned$citric.acid <- NULL
+#wine.cleaned$pH <- NULL
+
+# https://www.r-bloggers.com/multiple-regression-lines-in-ggpairs/
+
+GgpairFunction <- function(data, mapping, ...) {
+  # chart to be display is a point cloud and associated linear regression
+  # (in blue)
+  chart <- ggplot(data = data, mapping = mapping) + 
+    geom_point(alpha = 1/300) + 
+    geom_smooth(method = lm, fill = "blue", color = "blue", ...)
+  return(chart)
+}
+
+ggpairs(wine.cleaned,lower = list(continuous = GgpairFunction),
+  upper = list( continuous = wrap("cor", size = 2, alignPercent = 1) )) +
+  theme_grey(base_size = 12)
+
+```
+
+The high correlation are:
+
+* density and alcohol
+* residual sugar & density
+
+Quality is partially correlated with alcohol and density, chlorides.
+
+Nevertheless, we see that the point cloud are often dispersed. 
+It explains the correlation factor are often less than 0.5 (absolute value).
+
+In the rest of this document, only aboslute values of correlation factors will be mentioned.
+
+
+####
+
+
+## Variable correlation analysis
+
+In this section, we will analyse the different correlation between quality and  all other variables.
+Please use the tab to navigate from one analysis to the other.
+
+#### {.tabset .tabset-fade .tabset-pills}
+
+```{r bivariable_chart, echo = F}
+
+BiVariable <- function(variable,
+                       trans = "identity",
+                       boxplot.only = F, 
+                       unit = "",
+                       norm.variable = T) {
+  
+  variable.display = if (norm.variable) NormalizeString(variable) else variable
+  
+  title = paste("Quality vs ", variable.display)
+  title.variable = paste(variable.display,
+                         if (trans != "identity") paste(" - ",trans) else "")
+  title.variable = paste(title.variable, 
+                         if (unit != "") paste(" (",unit,")") else "")
+  
+  
+  
+  # box plot
+  plot.box <- ggplot(data = wine.cleaned,
+                     aes(x = factor(quality),y = wine.cleaned[variable])) +
+    geom_boxplot() + scale_y_continuous(trans = trans) +
+    ylab(title.variable) +
+    xlab("Quality") +
+    coord_flip()
+  
+  if (!boxplot.only) {
+    # jittered point cloud
+    plot.point <- ggplot(data = wine.cleaned,
+                         aes(x = wine.cleaned[variable],y = factor(quality))) + 
+      geom_point() + geom_jitter(alpha = 1/60) +
+      scale_x_continuous(trans = trans) + 
+      xlab(title.variable) +
+      ylab("Quality") 
+  
+    grid.arrange(plot.point , plot.box, ncol = 2, top = title)
+  } else {
+    plot.box +
+    ggtitle(title)
+  }
+  
+}
+```
+
+##### Quality vs Fixed Acidity
+```{r bivar_fixed.acidity, echo = F}
+BiVariable(variable = "fixed.acidity",
+           unit = "g / dm^3")
+
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$fixed.acidity,wine.cleaned$quality)))
+
+```
+
+Correlation factor is 0.05. 
+Watherver the quality is the average values are pretty much the same (between 6.6 and 7 g/dm^3).
+We see a very high dispersion of values, whatever the quality is.
+
+We can not identify any correlation pattern between fixed acidity and quality.
+
+
+##### Quality vs Volatile Acidity
+```{r bivar_volatile.acidity, echo = F}
+BiVariable(variable = "volatile.acidity",
+           unit = "g / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$volatile.acidity,wine.cleaned$quality)))
+```
+
+Correlation factor is 0.12. 
+Watherver the quality is the average values are pretty much the same (between 0.25 and 0.32 g/dm^3).
+We see a very high dispersion of values, whatever the quality is.
+
+We can not identify any correlation pattern between volatile acidity and quality.
+
+
+##### Quality vs Citric Acid
+```{r bivar_citric.acid, echo = F}
+BiVariable(variable = "citric.acid",
+           unit = "g / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$citric.acid,wine.cleaned$quality)))
+```
+
+
+Correlation factor is 0.04. 
+If we exclude the low quality wines, we see that quality tend to increase with an increase of citric acidity. 
+
+Watherver the quality is the average values are pretty much the same (between 0.3 and 0.35 g/dm^3).
+
+We can not identify any correlation pattern between volatile acidity and quality.
+
+
+
+##### Quality vs Residual sugar
+```{r bivar_residual.sugar, echo = F}
+BiVariable(variable = "residual.sugar",
+           unit = "g / dm^3")
+BiVariable(variable = "residual.sugar",
+           trans = "log10",
+           unit = "g / dm^3") 
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$residual,wine.cleaned$quality)))
+```
+
+
+Correlation factor is 0.11. 
+We can see that very good quality wines have a low residual sugar quantity. Quality of medium and good wines tends to increase with a decrease of residual sugar.
+This is logic as the vinho verder wine is supposed to be a dry wine.
+
+There are much bigger dispersion of values and mean values for each wine quality. Nevertheless, we can not identify any correlation pattern between residual sugar and quality.
+
+
+
+##### Quality vs Chlorides
+```{r bivar_chlorides, echo = F}
+BiVariable(variable = "chlorides",
+           unit = "g / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$chlorides,wine.cleaned$quality)))
+```
+
+
+Correlation factor is 0.28. This is one of the highest correlation factors.
+
+We can see that for low quality wine, quality increases when chlorides quantity is higher.
+For medium and good quality wine, we have the opposite trend.
+
+Nevertheless, due to the high dispersion of values, we can not identify any correlation pattern between chlorides and quality.
+
+##### Quality vs Free Sulfur Dioxide
+```{r bivar_free.sulfur.dioxide, echo = F}
+BiVariable(variable = "free.sulfur.dioxide",
+           unit = "mg / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$free.sulfur.dioxide,wine.cleaned$quality)))
+
+```
+
+Correlation factor is 0.02. This is very low.
+
+Here, we can see an interesting information. Low quality wines tend to have a low free sulfur dioxide figure.
+The sulfur dioxide in wine is used to avoid wine oxydation and other chemical reactions.
+We can think that these kinds of reactions occured for wines having lof free sulfur dioxide figures.
+Neverthelees, we can see that free sulfur dioxide figures are very dispersed whatever the wine quality is. Therefore, we can not identify any correlation pattern between free sulfure dioxide and quality.
+
+##### Quality vs Total Sulfur Dioxide
+```{r bivar_volatile.sulfur.dioxide, echo = F}
+BiVariable(variable = "total.sulfur.dioxide",
+           unit = "mg / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$total.sulfur.dioxide,wine.cleaned$quality)))
+
+```
+
+Correlation factor between these two variables is pretty low (0.17).
+
+We can see that a distinction between low quality wines and medium/good ones.
+
+For good/medium quality wines, the lower the total sufur dioxide is, the better it is. 
+We see that low quality wines, total sulfur dioxide mean values are the lowest ones (about 110 mg/dm^3).
+
+
+Nevertheless, big data dispersion does not allow us any correlation conclusion.
+
+
+
+##### Quality vs Density
+```{r bivar_density, echo = F}
+BiVariable(variable = "density",
+           unit = "g / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$density,wine.cleaned$quality)))
+```
+
+
+The correlation factor between density and quality is one of the highest with a value of 0.30.
+For good/medium quality wines, the lower the density is, the better it is. As density and residual sugar are highly correlated, this behaviour is not a surprise.
+
+Nevertheless, big data dispersion does not allow us any correlation conclusion.
+
+##### Quality vs pH
+```{r bivar_pH, echo = F}
+BiVariable(variable = "pH",
+           norm.variable = F)
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$pH,wine.cleaned$quality)))
+```
+
+Correlation coefficient between quality and pH is 0.08. 
+
+pH values are very similar whatever the wine quality is. 
+There is also a high values dispersion for all wine qualities.
+It does not allow us any correlation conclusion.
+
+
+
+##### Quality vs Sulphates
+```{r bivar_sulphates, echo = F}
+BiVariable(variable = "sulphates",
+           unit = "g / dm^3")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$sulphates,wine.cleaned$quality)))
+```
+
+Here also, the correlation factor is pretty low with a value of 0.02.
+Average values are very close whatever the quality is.
+There is also a high values dispersion for all wine qualities.
+It does not allow us any correlation conclusion.
+
+
+##### Quality vs Alcohol
+```{r bivar_acohol, echo = F}
+BiVariable(variable = "alcohol",
+           unit = "% / vol")
+BiVariable(variable = "alcohol",
+           trans = "log10",
+           unit = "% / vol")
+
+paste("Correlation factor: ",abs(cor(wine.cleaned$alcohol,wine.cleaned$quality)))
+```
+
+Correlation factor between alcohol and quality is one of the highest with a value of 0.42.
+
+For alcohol of medium and good wines, we see that quality increase with higher alcohol degrees. 
+This is coherent with residual sugar values. When sugar value decreases, it means it has been transformed into alcohol.
+This correlation is definitevely not a surprise.
+
+
+####
+
+On every correlation analysis, due to the high dispersion of value, any possible correlation can not really be assessed.
+
+
+## Other explored relationships
+
+In this section, we explore the two highest variable correlation.
+Please use the tabs to navigate from one chart to another.
+
+#### {.tabset .tabset-fade .tabset-pills}
+##### Alcohol vs Density
+
+```{r alcohol_vs_density, echo = F}
+ggplot(data = wine.cleaned,aes(x = density,y = alcohol)) +
+  geom_point(alpha = 1/5) + geom_jitter(alpha = 1/60) +
+  scale_x_continuous() +
+  ylab("Density (g / cm^3)") + xlab("Alcohol (% / vol)") +
+  ggtitle("Alcohol vs Density correlation") +
+  geom_smooth(method = "lm", se = F)
+```
+
+We can see there is a correlation between wine dentisy and alcohol.
+
+##### Residual Sugar vs Density
+```{r residual.sugar_vs_density, echo = F}
+
+ggplot(data = wine.cleaned,
+       aes(x = residual.sugar,y = density)) +
+  geom_point(alpha = 1/10) + geom_jitter(alpha = 1/60)+
+  scale_y_continuous()  + scale_x_continuous(trans="log10") +
+  ylab("Density (g /cm^3)") + xlab("Residual Sugar - log 10 (g /dm^3)") +
+  ggtitle("Residual sugar vs Density correlation") +
+  geom_smooth(method = "loess",se = F)
+```
+
+We can also see a correlation trend between density and residual sugar.
+We can observe also a high dispersion of density for low residual sugar values.
+
+####
+
+From the two above chart, we can see that the more residual sugar you have, the bigger the density is, and the lower the alcohol is. 
+This output is not a surprise as the vinho verde white wine is supposed to be a dry wine.
+
+## Multivariate analysis
+
+In this section, we will to analys correlation of alcohol, density and chlorides vs Quality. 
+We will perform a bivariable analysis versus quality. It means we will get 3 different charts.
+With these charts, we will try to identify specific quality cluster and trend depending of the two watched variables.
+
+Please use the tab to navigate from one chat to another.
+
+#### {.tabset .tabset-fade .tabset-pills}
+##### Alcohol vs Density and Quality
+```{r mv1, echo = F}
+ggplot(data = wine.cleaned,
+       aes(x = alcohol,y = density,colour = factor(quality))) +
+  geom_point(alpha = 1/5) +
+  scale_y_continuous() +
+  ylab("Density (g / cm^3)") + xlab("Alcohol (% / vol)") +
+  geom_smooth(method = "lm", se = F) +
+  labs(colour = "quality") +
+  ggtitle("Alcohol vs Density per Quality") +
+  scale_color_brewer(palette = "Greens") +
+  theme(
+    axis.text = element_text(size = 10),
+    legend.key = element_rect(fill = "grey40"),
+    panel.grid.major = element_line(colour = "grey50"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "grey40")
+  )
+```
+
+##### Chlorides vs Density and Quality
+
+```{r mv2, echo = F}
+ggplot(data = wine.cleaned,
+       aes(x = chlorides,y = density,colour = factor(quality))) +
+  geom_point(alpha = 1/5) +
+  scale_y_continuous() + 
+  ylab("Density (g / cm^3)") + xlab("Chlorides (g / dm^3)") +
+  geom_smooth(method = "lm", se = F) +
+  labs(colour = "quality") +
+  ggtitle("Chlorides vs Density per Quality") +
+  scale_color_brewer(palette = "Greens") +
+  theme(
+    axis.text = element_text(size = 10),
+    legend.key = element_rect(fill = "grey40"),
+    panel.grid.major = element_line(colour = "grey50"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "grey40")
+  )
+
+```
+
+##### Chlorides vs Alcohol and Quality
+
+```{r mv3, echo = F}
+ggplot(data = wine.cleaned,
+       aes(x = chlorides,y = alcohol,colour = factor(quality))) +
+  geom_point(alpha = 1/5) +
+  scale_y_continuous() +
+  ylab("Alcohol (% / vol)") + xlab("Chlorides (g / dm^3)") +
+  geom_smooth(method = "lm", se = F) +
+  labs(colour = "quality") +
+  ggtitle("Chlorides vs Alcohol per Quality") +
+  scale_color_brewer(palette = "Greens") +
+  theme(
+    axis.text = element_text(size = 10),
+    legend.key = element_rect(fill = "grey40"),
+    panel.grid.major = element_line(colour = "grey50"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "grey40")
+  )
+
+
+```
+
+####
+
+On these 3 charts, we can not see any data cluster popping out. In addition, we see the various trend lines are pretty similar.
+We see we can are not able to create a model based on two variable to estimate the wine quality.
+
+We should create a model taking into account more variable to try estimate the wine quality. Nevertheless, we will  explain in the reflexion section why we are not confident in such approach.
+
+
+## Final Plots and Summary
+
+This section shows 3 differents charts and main outcome for each of them.
+
+```{r residual.sugar.log, echo = F}
+CreateHistogram(data = wine,
+                variable = "residual.sugar",
+                exclude.outlier = T,
+                color = "gray",
+                bins = 60,
+                title = "Residual sugar Density distribution (log 10)",
+                unit = "g / dm^3",
+                show.density = T) +
+  scale_x_continuous(trans="log10") +
+  geom_density()
+
+```
+
+In this chart, we see that we see two groups of wine. 
+The one having more than 5 g/dm^3 residual sugar and the other ones. 
+As the vinho verder is a dry wine, we expect it to get low residual sugar value.
+
+
+```{r free.sulfur.dioxide_impact, echo = F}
+BiVariable(variable = "free.sulfur.dioxide",
+           boxplot.only = T,
+           unit = "mg / dm^3")
+```
+
+In this chart, we can see that some wine grower do not fully master the wine making process. They did not includes enough sulfur dioxide to ensure a non wine oxydation. It results in a poor quality wine.
+
+
+```{r correlation_not_easy, echo = F}
+ggplot(data=wine.cleaned,aes(x = alcohol,y = density,colour = factor(quality))) +
+  geom_point(alpha = 1/5) +
+  scale_y_continuous() +
+  ylab("Density (g / cm^3)") + xlab("Alcohol (% / vol)") +
+  geom_smooth(method = "lm", se = F) +
+  labs(colour = "quality") +
+  ggtitle("Alcohol vs Density per Quality") +
+  scale_color_brewer(palette = "Greens") +
+  theme(
+    axis.text = element_text(size = 10),
+    legend.key = element_rect(fill = "grey40"),
+    panel.grid.major = element_line(colour = "grey50"),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "grey40")
+  )
+
+```
+
+In this chart, we can not see any wine quality cluster popping up. 
+The trend lines are pretty much the same (except the high quality one (9) but not really representative due to the low number of measures).
+
+
+## Reflexion
+
+### Global reflexion about the outcome of this study
+
+This wine chemistry variable analysis is really interesting. 
+The main expected outcomes can be seens through data analysis (link between residual sugar, density and alcohol).
+We can also point out some issues during the wine making process by identifying that low suflur dioxide values leads to poor wine quality.
+
+For quality projection, we see that there is not easy correlation that can be found. We have very low correlation max factors (the highest one is less than 0.5).
+
+We can ask ourselve about the dataset itself. Do we miss some valuable information to better assess the wine quality. For instance, we do not know the wine vintage. For also do not know the grape variety used for each of the tested wines. What was the land quality on which the grappe growed.
+
+In addition, if wine quality could only be identified through its chemical factors, we could easily creates artificial wines. This is not the case. I could only find one startup aiming to be able to create artificial wine : Ava Winery (http://www.avawinery.com). This fake wine seems not to be really good when tasted (http://www.ouest-france.fr/leditiondusoir/data/747/reader/reader.html#!preferred/1/package/747/pub/748/page/5 (french article)).
+
+See https://www.newscientist.com/article/2088322-synthetic-wine-made-without-grapes-claims-to-mimic-fine-vintages/
+http://www.radionz.co.nz/national/programmes/thiswayup/audio/201807662/lab-made-wine
+
+Nevertheless, artificial wines can not be sold in France since 1905 due to anti-fraud low.
+
+It that condition, I think nothing will be better than real wine tasting to identify if you like it or not.
+
+### Personnal reflexion about this analysis
+
+This wine analysis is very interesting. 
+The dataset had already a very quality and a significant number of observations to be representative. Even after removed the outliers we still have enough observation.
+The dataset was tidy. It makes all computations pretty fast.
+
+The dataset contains (except the quality field) continuous variables. It helps the R code factorisation. 
+
+P4 lessons and project sample were usefull to build this analysis, in term of techniques (R principles and syntax) but also in term of analysis organisation.
+
+I get some trouble making R markdown work especially with the list items. I struggled getting the layout I wanted, but I finally succeeded. 
+
+I found interesting graphical data representation using google (especially the correlation matrix).
+
+I did not respect the R coding rules at the beginning. I modified the code for the second submission. I find some coding recommendations useful, but others seems to come from an another age. Especially the 80 characters limits as we do not use VT terminals for ages.
+
+If we focus on the analysis itself, we were asked to answer a specific question. Within my analysis, I could not really answer this question. I was able to identify one item explaining why you get a bad wine, but could not find items explaining you get a good wine. In this analys, I only explored univariate and bivariate analysis. It means that they are a lot of possibilities I did not explore (from 4 variables up to 12 variables).
+
+To be rigourous and to assert we can not find correlation between wine parameters and quality, I should have done all the possible analysis. I would have been a time consuming activity. Litterature conforted me thinking I would not find any reason to fully explain the wine quality. Nevertheless, this is only an assumption that I did not really demonstrate.
+It would have been much easier to find a parameters correlation explaining the wine quality. 
+In our case, we need to be very carefull when writing our conclusion in order to make our conclusion indisputable.
+
+
+
+
+
+
+
+
+
