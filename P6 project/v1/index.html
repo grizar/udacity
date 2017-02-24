@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<style>
+    /* Inspired from
+       https://www.w3schools.com/howto/howto_css_button_group.asp */
+
+    .btn-group .button {
+        background-color: #4CAF50; /* Green background */
+        border: 1px solid green; /* Green border */
+        color: white; /* White text */
+        padding: 5px 12px; /* Some padding */
+        cursor: pointer; /* Pointer/hand icon */
+        float: left; /* Float the buttons side by side */
+    }
+
+    .btn-group .button:not(:last-child) {
+        border-right: none; /* Prevent double borders */
+    }
+
+    /* Clear floats (clearfix hack) */
+    .btn-group:after {
+        content: "";
+        clear: both;
+        display: table;
+    }
+
+    /* Add a background color on hover */
+    .btn-group .button:hover {
+        background-color: #3e8e41;
+    }
+
+    /* Improve visibility of clicked button */
+    .btn-group .button.selected {
+         background-color: #ACAF50;
+    }
+
+    /* Main SVG style */
+    #chart {
+        margin-left:auto; 
+        margin-right:auto; 
+        display:block;}
+
+    /* Button style */
+    .metric-btn {
+        display:block;
+        margin: 0 auto;
+    }
+
+</style>
+<body>
+    <h1 align="center">US National Air System delays</h1>
+    </div><p id="story" align="center"></p>
+    </div>
+    <svg id="chart" width="960" height="500"></svg>
+    <div id="commands">
+        <div class="btn-group" id="metrics-buttons" style="margin: 0 auto; width: 656px; text-align: center;"></div>
+    </div>
+</body>
+
+<script>
+
+    // Global variables
+    var currentMetric = null;
+    var delayData = [];
+    var dataAllAirports = [];
+    var svg = d3.select("svg");
+	var createairportlinesplaceholder = true;
+
+	var margin = {top: 20, right: 80, bottom: 30, left: 50};
+	var width = svg.attr("width") - margin.left - margin.right;
+	var height = svg.attr("height") - margin.top - margin.bottom;
+	var canvas = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+	    
+	// https://bl.ocks.org/mbostock/3884955	
+
+    // Append x axis
+	var x = d3.scaleLinear().range([0, width]).domain([2004,2015]);
+    var xaxis = d3.axisBottom(x);
+    xaxis.tickFormat(d3.format("0000"));
+	canvas.append("g")
+		  .attr("class", "axis axis--x")
+		  .attr("transform", "translate(0," + height + ")")
+          .call(xaxis);
+
+    // Append y axis
+    var y = d3.scaleLinear().range([height, 0]).domain([0,0]);
+    var yaxis = d3.axisLeft(y);
+    canvas.append("g")
+		  .attr("class", "axis axis--y")
+          .call(yaxis)
+		  .append("text")
+          .attr("class","axis--y-label")
+		  .attr("transform", "rotate(-90)")
+		  .attr("y", 6)
+		  .attr("dy", "0.71em")
+		  .attr("fill", "#000")
+		  .text("");
+
+    // Define the way a line will be displayed by D3
+	var myline = d3.line()
+		.curve(d3.curveMonotoneX)
+		.x(function(d) { return x(d.key); })
+		.y(function(d) { return y(d.value); });
+
+    // Append average line for all airports and container to receive lines for each airport
+    var path = canvas.append("path").attr("id","avgline");
+    var airportlines = canvas.append("g").attr("id","airportlines");
+
+    function displayData(metric,color,yaxislabel,top50) {
+        // This is the main function of this snippet
+        // It takes as parameters the requested metric, the average line color, the y axis label and
+        // a flag to mention if we display the TOP 50 aiport data.
+
+        // Compute new dataset
+        currentMetric = metric;
+        dataAllAirports = d3.nest()
+            .key(function(d) { return d.year})
+            .rollup(group).entries(delayData);
+
+        // Update y axis. We get the max values of the airport average
+        var maxavg = d3.max(dataAllAirports, function (d) { return d.value });
+        var maxy = maxavg;
+
+        var transition = d3.transition().duration(1500)
+
+        if (top50 == true) {
+            // We get the TOP 50 airport data
+            dataAirports = d3.nest()
+                .key(function(d) { return d.airportCode})
+                .key(function(d) { return d.year})
+                .rollup(group).entries(delayData.filter(function (d) { return d.airportTop50 == "T";}));
+            
+
+            // Pass 1: create the path place holder if needed and find the max value
+            dataAirports.forEach(function(d) {
+                
+                // Let's create the D3 path if it does not relary exists
+                if (createairportlinesplaceholder) {
+                    // Add line if it does not alredy exists
+                    console.log("Creating line for " + d.key);
+                    airportlines.append("path").attr("id","line"+d.key);
+                }
+                
+                // Get max value for this aiport. We put a limit on the possible max value, in order to avoid display issues caused by outliers
+                var maxaiport = d3.max(d.values, function (d) { return d.value });
+                if (maxaiport > maxy) {
+                    if (maxaiport < 3 * maxavg) {
+                        maxy = maxaiport;
+                    }
+                }
+            });
+
+            // Set y axis max value
+            y.domain([0, 1.2 * maxy]);
+            transition.select(".axis--y").call(yaxis);
+            transition.select(".axis--y-label").text(yaxislabel);
+
+            // Display all airports lines
+            dataAirports.forEach(function(d) {
+                console.log( d);
+                transition.select("#line" + d.key)
+                    .attr("d", myline(d.values))
+                    .attr("stroke", "grey")
+                    .attr("stroke-width", "0.5")
+                    .attr("fill", "none");
+            });
+
+            // We are now sure we do not need to create the airport line placeholder
+            createairportlinesplaceholder = false;
+        } else {
+
+            // We do not display the TOP 50 airport. In that case, we only have to set the Y axis max value
+            y.domain([0, 1.2 * maxy]);
+            transition.select(".axis--y").call(yaxis);
+            transition.select(".axis--y-label").text(yaxislabel);
+        }
+
+        // And finally, display the average line for all airports
+        transition.select("#avgline")
+            .attr("d", myline(dataAllAirports))
+            .attr("stroke", color)
+            .attr("stroke-width", "3")
+            .attr("fill", "none");        
+    }
+
+
+    function UpdateMetrics() {
+        console.log("Update Metrics");
+        d3.selectAll(".metric-btn").classed("selected",false);
+        var button = d3.select("#" + this.id);
+        button.classed("selected",true);
+        debugger;
+        displayData(button.attr("metric"),button.attr("color"),button.attr("yaxislabel"),true)
+    }
+
+    /* JavaScript goes here. */
+
+    function group(item) {
+        switch (currentMetric) {
+            case 'PercentTotal': 
+                return 100 * d3.sum(item, function(g) {return g.delay_nas_ct; }) / d3.sum(item, function(g) {return g.flights_ct; });
+                break;
+            case 'PercentDelay':
+                return 100 * d3.sum(item, function(g) {return g.delay_nas_ct; }) / d3.sum(item, function(g) {return g.delays_ct; });
+                break;
+            case 'AvgDur':
+                return d3.sum(item, function(g) {return g.delay_nas_dur; }) / d3.sum(item, function(g) {return g.delay_nas_ct; });
+                break;
+            case '':
+                return 0;
+                break;
+            default:
+                // by default, return the total flight number. This case shall never happen
+                console.log('Default grouping');
+                return d3.sum(item, function(g) {return g.flights_ct; });
+        }
+    }
+
+
+    function draw() {
+        // Display the time based story
+
+        // 1st scene: NAS delays % of all flights
+        displayData("","black","",false);
+        d3.select("#story").html("From 2004 to 2015, the National Air System caused less and less delays ...");
+        displayData("PercentTotal","steelblue","Percent",false);
+        
+        // 2nd scene: NAS delays % of delays only
+        setTimeout(function() {
+            d3.select("#story").html("and the propotion of delays originated by the National Air System is reducing ...");
+            displayData("PercentDelay","red","Percent",false);
+        }, 5000); // executera le code après 2000 milliseconde, soit 2 secondes
+        
+        // 3rd scene: NAS delay duration
+        setTimeout(function() {
+            d3.select("#story").html("but at the same time, the average delay duration of National Air System originated delays remains stable.");
+            displayData("AvgDur","green","Minutes",false);
+        }, 10000); // executera le code après 2000 milliseconde, soit 2 secondes
+
+        // 4th scene: User will create his own story
+        setTimeout(function() {
+            d3.select("#story").html("Grey lines display information for the top 50 airports in term of number of flights. The color line represents the all aiports average.");
+            displayData("","black","",true);
+            
+            // Add buttons on the page
+            var metrics = [ { label:"Percentage of delays due to NAS", metric:"PercentTotal", yaxislabel: "Percent",color:"steelblue"},
+                            { label:"Proportion of delays due to NAS", metric:"PercentDelay", yaxislabel: "Percent",color:"red"},
+                            { label:"Average NAS delays duration", metric:"AvgDur", yaxislabel: "Minutes",color:"green"} ];   
+
+            d3.select("#metrics-buttons")
+                .selectAll("input")
+                .data(metrics)
+                .enter()
+                .append("input")
+                .attr("id",function (d){return "metric-btn-" + d.metric;})
+                .attr("metric",function (d){return d.metric;})
+                .attr("yaxislabel",function (d){return d.yaxislabel;})
+                .attr("color",function (d){return d.color;})
+                .attr("type","button")
+                .attr("class","button metric-btn")
+                .attr("value", function (d){return d.label;} )
+                .on("click",UpdateMetrics);           
+
+            d3.select("#PercentTotal").classed("selected",true);
+        },15000);
+    }
+
+    // Entry point. I load the delay data. When done, I will data and associated logic
+    function formatRow(data) {
+        delayData.push({ year: +data.year,
+            airportCode: data.airport,
+            airportName: data.airport_name,
+            airportTop50: data.TOP50,
+            flights_ct: +data.arr_flights,
+            delays_ct: +data.arr_del15,
+            delay_nas_ct: +data.nas_ct,
+            delay_nas_dur: +data.nas_delay
+        });
+    }
+
+    d3.csv("airline_delay_causes.csv", formatRow, draw);
+
+
+
+</script>
