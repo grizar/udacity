@@ -44,10 +44,10 @@ Answer : Reordering the slides.
 Comment: Title shall change according to slide
 Answer : Size set.
 
-### Feedbacks received from Guy D on v3:
+### Feedbacks received from Guy D on v2:
 
-Comment: First slide is confusing.
-Answer: remove 1st slide and associated KPI.
+Comment: Second slide is confusing.
+Answer : remove 2nd slide and associated KPI.
 
 Comment: Display airport when mouse is on an airport line. It can be interesting to know which airport is concerned.
-
+Answer : Tooltip added
