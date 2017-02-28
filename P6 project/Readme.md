@@ -4,6 +4,8 @@
 This analysis will show that US National Airspace System related delays tends to decrease other the time.
 Nevertheless, the impact of the National Airspace System delay for the passenger remains the same over the years.
 
+Because a single passenger will be impacted by few NAS related delays and the delay duration remain the roughly the same, he won't be able to notice the efforts made by the National Airspace System to improve.
+
 ##Initial design decision
 
 To support my findings, I wanted to show 3 different metrics:

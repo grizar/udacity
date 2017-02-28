@@ -1,0 +1,43 @@
+
+/* Inspired from
+   https://www.w3schools.com/howto/howto_css_button_group.asp */
+
+.btn-group .button {
+	background-color: lightgrey; 
+	border: 1px solid black;
+	margin: 5px;
+	color: black; 
+	padding: 5px 12px; /* Some padding */
+	cursor: pointer; /* Pointer/hand icon */
+	float: left; /* Float the buttons side by side */
+}
+
+/* Clear floats (clearfix hack) */
+.btn-group:after {
+	content: "";
+	clear: both;
+	display: table;
+}
+
+/* Add a background color on hover */
+.btn-group .button:hover:not([disabled]) {
+	background-color: grey;
+}
+
+/* Improve visibility of clicked button */
+.btn-group .button.selected {
+	 background-color: darkgrey;
+}
+
+/* Main SVG style */
+#chart {
+	margin-left:auto; 
+	margin-right:auto; 
+	display:block;}
+
+/* Button style */
+.metric-btn {
+	display:block;
+	margin: 0 auto;
+}
+
